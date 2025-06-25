@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LED Matrix</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <style>
+        /* Optional: limit carousel image size */
+        #presetCarousel img {
+            width: 100%;
+            height: 150px;
+            object-fit: contain;
+            image-rendering: pixelated;
+        }
+    </style>
+</head>
+
+<body class="d-flex flex-column min-vh-100 justify-content-center align-items-center">
+
+    <div class="card shadow-sm" style="max-width: 400px; width: 100%;">
+        <div class="card-body">
+            <h1 class="h4 mb-3 text-center">LED Matrix</h1>
+
+            <!-- Carousel with preset images -->
+            <div id="presetCarousel" class="carousel slide mb-3">
+                <div class="carousel-inner">
+                    <!-- Add your preset images here -->
+                    <div class="carousel-item active">
+                        <img src="images/bee.png" class="d-block mx-auto" alt="Preset 1" />
+                    </div>
+                    <div class="carousel-item">
+                        <img src="images/cat.png" class="d-block mx-auto" alt="Preset 2" />
+                    </div>
+                    <div class="carousel-item">
+                        <img src="images/ufo_cow.png" class="d-block mx-auto" alt="Preset 3" />
+                    </div>
+                </div>
+                <button class="carousel-control-prev" type="button" data-bs-target="#presetCarousel"
+                    data-bs-slide="prev">
+                    <span class="carousel-control-prev-icon"></span>
+                    <span class="visually-hidden">Previous</span>
+                </button>
+                <button class="carousel-control-next" type="button" data-bs-target="#presetCarousel"
+                    data-bs-slide="next">
+                    <span class="carousel-control-next-icon"></span>
+                    <span class="visually-hidden">Next</span>
+                </button>
+            </div>
+
+            <!-- Autoplay toggle -->
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" role="switch" id="autoplaySwitch">
+                <label class="form-check-label" for="autoplaySwitch">Autosroll</label>
+            </div>
+
+            <div class="mb-3">
+                <label for="fileInput" class="form-label">Add Picture</label>
+                <input class="form-control" type="file" id="fileInput" accept="image/png, image/jpeg" />
+            </div>
+
+            <button id="sendBtn" class="btn btn-primary w-100">Set Picture</button>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mt-5" style="max-width: 400px; width: 100%;">
+        <div class="card-body">
+            <h1 class="h4 mb-3 text-center">Extra Settings</h1>
+
+            <div class="mb-3">
+                <label for="wledIp" class="form-label">Choose other WLED-IP or mDNS</label>
+                <input class="form-control" type="text" id="wledIp" placeholder="e.g. led-matrix.local or 192.168.1.50"
+                    value="led-matrix.local" />
+            </div>
+            <!-- Info bar -->
+            <p>
+                Status:
+                <code id="infoBar" class="mt-3 text-wrap" style="min-height: 3em;">...</code>
+            </p>
+
+        </div>
+
+    </div>
+
+    <canvas id="canvas" width="16" height="16" style="display:none;"></canvas>
+
+    <script src="scripts/wled-uploader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const infoBar = document.getElementById('infoBar');
+        const fileInput = document.getElementById('fileInput');
+        const wledIpInput = document.getElementById('wledIp');
+        const carousel = document.getElementById('presetCarousel');
+        const carouselInner = carousel.querySelector('.carousel-inner');
+        const autoplaySwitch = document.getElementById('autoplaySwitch');
+
+        let autoplayInterval = null;
+
+        const showMessage = (msg, type = "info") =>
+            infoBar.innerHTML = msg;;
+
+        const sendActiveImage = () => {
+            const wledIp = wledIpInput.value.trim();
+            if (!wledIp) return showMessage("Please enter WLED IP or mDNS.", "danger");
+
+            const activeImg = carousel.querySelector('.carousel-item.active img');
+            if (!activeImg) return showMessage("No image selected to send.", "danger");
+
+            showMessage("Sending selected image to WLED...", "info");
+
+            fetch(activeImg.src)
+                .then(res => res.blob())
+                .then(blob => displayFile(new File([blob], "preset.png", { type: blob.type }), wledIp))
+                .then(res => showMessage("Success! WLED responded: " + res, "success"))
+                .catch(err => showMessage("Error: " + err, "danger"));
+        };
+
+        document.getElementById('sendBtn').addEventListener('click', sendActiveImage);
+
+        fileInput.addEventListener('change', e => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = e => {
+                carouselInner.querySelectorAll('.carousel-item').forEach(i => i.classList.remove('active'));
+
+                const newItem = document.createElement('div');
+                newItem.className = 'carousel-item active';
+                newItem.innerHTML = `<img src="${e.target.result}" class="d-block mx-auto" alt="Uploaded Image" />`;
+                carouselInner.appendChild(newItem);
+
+                const instance = bootstrap.Carousel.getInstance(carousel);
+                instance?.to(carouselInner.children.length - 1);
+            };
+            reader.readAsDataURL(file);
+        });
+
+        autoplaySwitch.addEventListener('change', () => {
+            const instance = bootstrap.Carousel.getOrCreateInstance(carousel);
+            if (autoplaySwitch.checked) {
+                autoplayInterval = setInterval(() => instance.next(), 5000);
+            } else {
+                clearInterval(autoplayInterval);
+                autoplayInterval = null;
+            }
+        });
+
+        carousel.addEventListener('slid.bs.carousel', () => {
+            if (autoplaySwitch.checked) {
+                sendActiveImage();
+            }
+        });
+    </script>
+</body>
+
+</html>
