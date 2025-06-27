@@ -4,13 +4,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>LED Matrix - Pixel Setter</title>
+  <title>Pixel Flood</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
   <style>
     /* Ensure visible canvas is crisp when scaled */
     #previewCanvas {
       image-rendering: pixelated;
-      border: 1px solid #ccc;
       cursor: crosshair;
       width: 256px;
       height: 256px;
@@ -25,7 +24,7 @@
   <!-- Main card for pixel color setting -->
   <div class="card shadow-sm mb-4" style="max-width: 400px; width: 100%;">
     <div class="card-body">
-      <h1 class="h4 mb-3 text-center">Set Single Pixel</h1>
+      <h1 class="h4 mb-3 text-center">Pixel Flood</h1>
 
       <!-- Visible canvas where user sees the image -->
       <canvas id="previewCanvas" width="16" height="16"></canvas>
@@ -69,17 +68,22 @@
     const colorPicker = document.getElementById("colorPicker");
 
     const hiddenCanvas = document.getElementById("canvas");
-    const hiddenCtx = hiddenCanvas.getContext("2d");
+    const hiddenCtx = hiddenCanvas.getContext("2d", { willReadFrequently: true });
 
     const previewCanvas = document.getElementById("previewCanvas");
     const previewCtx = previewCanvas.getContext("2d");
     previewCtx.imageSmoothingEnabled = false;
 
-    // Track selected pixel coordinates
-    let selectedPixel = { x: 0, y: 0 };
+    let selectedPixel = null;
+    let hoveredPixel = null;
+    let currentImageData = null;
 
-    // Draw imageData (array of [r,g,b]) on hidden canvas, then copy to preview canvas scaled
-    function drawImageData(imageData) {
+    function highlightPixel(x, y, color = "rgba(255, 255, 255, 0.4)") {
+      previewCtx.fillStyle = color;
+      previewCtx.fillRect(x, y, 1, 1);
+    }
+
+    function drawBaseImage(imageData) {
       const width = imageData[0].length;
       const height = imageData.length;
       hiddenCanvas.width = width;
@@ -87,7 +91,6 @@
       previewCanvas.width = width;
       previewCanvas.height = height;
 
-      // Draw on hidden canvas pixel by pixel
       for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
           const [r, g, b] = imageData[y][x];
@@ -95,14 +98,18 @@
           hiddenCtx.fillRect(x, y, 1, 1);
         }
       }
-
-      // Copy hidden canvas to preview canvas (scaled up via CSS)
-      previewCtx.clearRect(0, 0, width, height);
-      previewCtx.drawImage(hiddenCanvas, 0, 0);
+      currentImageData = imageData;
     }
 
-    // Fetch image data from backend and draw
+    function redrawCanvas() {
+      previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+      previewCtx.drawImage(hiddenCanvas, 0, 0);
+      if (hoveredPixel) highlightPixel(hoveredPixel.x, hoveredPixel.y, "rgba(255,255,255,0.2)");
+      if (selectedPixel) highlightPixel(selectedPixel.x, selectedPixel.y, "rgba(255,255,255,0.4)");
+    }
+
     async function fetchAndDrawImage() {
+      selectedPixel = null;
       const ip = ipInput.value.trim();
       if (!ip) {
         info.textContent = "Missing WLED IP.";
@@ -113,38 +120,49 @@
         const res = await fetch(`${ip}/image`);
         if (!res.ok) throw new Error("Failed to fetch image data");
         const imageData = await res.json();
-
-        drawImageData(imageData);
+        drawBaseImage(imageData);
+        redrawCanvas();
         info.textContent = "Image loaded.";
       } catch (err) {
         info.textContent = "Error loading image: " + err.message;
       }
     }
 
-    // When user clicks on preview canvas, update selected pixel and color picker
     previewCanvas.addEventListener("click", e => {
       const rect = previewCanvas.getBoundingClientRect();
       const scaleX = previewCanvas.width / rect.width;
       const scaleY = previewCanvas.height / rect.height;
-
       const x = Math.floor((e.clientX - rect.left) * scaleX);
       const y = Math.floor((e.clientY - rect.top) * scaleY);
-
       if (x >= 0 && x < previewCanvas.width && y >= 0 && y < previewCanvas.height) {
         selectedPixel = { x, y };
-
-        // Read pixel color at clicked pos from hidden canvas and update color picker
         const pixel = hiddenCtx.getImageData(x, y, 1, 1).data;
         colorPicker.value = rgbToHex(pixel[0], pixel[1], pixel[2]);
       }
+      redrawCanvas();
     });
 
-    // Convert rgb to hex string like #rrggbb
+    previewCanvas.addEventListener("mousemove", e => {
+      const rect = previewCanvas.getBoundingClientRect();
+      const scaleX = previewCanvas.width / rect.width;
+      const scaleY = previewCanvas.height / rect.height;
+      const x = Math.floor((e.clientX - rect.left) * scaleX);
+      const y = Math.floor((e.clientY - rect.top) * scaleY);
+      if (!hoveredPixel || hoveredPixel.x !== x || hoveredPixel.y !== y) {
+        hoveredPixel = { x, y };
+        redrawCanvas();
+      }
+    });
+
+    previewCanvas.addEventListener("mouseleave", () => {
+      hoveredPixel = null;
+      redrawCanvas();
+    });
+
     function rgbToHex(r, g, b) {
       return "#" + [r, g, b].map(x => x.toString(16).padStart(2, "0")).join("");
     }
 
-    // Set pixel color button logic
     btnSet.addEventListener("click", () => {
       const ip = ipInput.value.trim();
       const x = selectedPixel.x;
@@ -169,13 +187,9 @@
         .catch(err => info.textContent = "Error: " + err);
     });
 
-    // Fetch image button logic
     btnFetch.addEventListener("click", fetchAndDrawImage);
-
-    // Auto-refresh image on page load
     window.addEventListener("load", fetchAndDrawImage);
   </script>
-
 </body>
 
 </html>
