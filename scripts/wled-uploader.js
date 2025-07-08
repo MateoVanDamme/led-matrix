@@ -93,8 +93,9 @@ function displayFile(file, wledIp) {
                     ]);
                 }
 
-                // Call displayRgbArray with the extracted data
-                const correctedArray = reorderSerpentine(rgbArray, 16, 16);
+                // No longer needed because the wled is now configured as a 2d matrix correctly
+                // const correctedArray = reorderSerpentine(rgbArray, 16, 16);
+                const correctedArray = rgbArray;
                 displayRgbArray(correctedArray, wledIp)
                     .then(resolve)
                     .catch(reject);
